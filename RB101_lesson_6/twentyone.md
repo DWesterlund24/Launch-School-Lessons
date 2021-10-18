@@ -31,8 +31,8 @@ We are creating a game called twenty-one in which the player tries to get their 
 
 # Data Structure
 - Hash to hold card values
-- We can remove pairs from the hash as they are dealt
-- Hands will be arrays holding the keys to the hash
+  - We can remove pairs from the hash as they are dealt
+- Hash to hold each players cards, ace count, and score
 
 # Algorithm
 - Setup deck and hands as specified in data structure
@@ -61,8 +61,8 @@ We are creating a game called twenty-one in which the player tries to get their 
 - Setup deck and hands as specified in data structure
 - Deal cards one at a time alternating beginning with the player to start the game, both players should then have 2 cards
 - Show hands to the user
-  - Show the dealers first card and show all subsequent cards as unknown cards
-  - Show all of the players cards
+  - Show the dealer's first card and show all subsequent cards as unknown cards
+  - Show all of the player's cards
 - Allow player to hit or stay
 - Computer should hit if below 17, otherwise stay
 - After every card, add card value to hand total, if card is an ace, add 1 to ace tally.

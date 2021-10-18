@@ -1,19 +1,21 @@
+require 'pry-byebug'
+
 CARDS_IN_SUIT = { '2' => 2, '3' => 3, '4' => 4, '5' => 5, '6' => 6, '7' => 7,
                   '8' => 8, '9' => 9, '10' => 10, 'jack' => 10, 'queen' => 10,
-                  'king' => 10, 'ace' => 11 }
+                  'king' => 10, 'ace' => 11 }.freeze
 
-TARGET_NUMBER = 27
+TARGET_NUMBER = 21
 
 def prompt(string)
   puts('=> ' + string)
 end
 
 # Argument is an array of characters
-# Each character in the array represents a suit and is prepended to each card name
+# Each string in the array represents a suit
 def create_deck(array)
-  array.each_with_object({}) do |char, object|
+  array.each_with_object({}) do |suit_name, object|
     suit = CARDS_IN_SUIT.map do |key, value|
-      [char + key, value]
+      [[suit_name, key], value]
     end.to_h
 
     object.merge!(suit)
@@ -23,7 +25,7 @@ end
 def deal_card!(deck, hand, discards)
   # Shuffle discards into deck as necessary
   if deck.empty?
-    (deck << discards.dup).flatten!
+    (deck << discards).flatten!(2)
     discards.clear
   end
 
@@ -32,72 +34,80 @@ def deal_card!(deck, hand, discards)
   deck.delete(random_card)
 end
 
-# Returns string of card names without suit characters
+# Return list of card names without suit
 def list_cards(card_array, hide_subsequent = false)
-  if hide_subsequent == true
-    card_array = card_array.map.with_index do |card, index|
-      index > 0 ? 'unknown card' : card[1..].capitalize
-    end
-  else
-    card_array = card_array.map { |card| card[1..].capitalize }
-  end
+  card_array = if hide_subsequent
+                 card_array.map.with_index do |card, index|
+                   index.zero? ? card[1].capitalize : 'unknown card'
+                 end
+               else
+                 card_array.map { |card| card[1].capitalize }
+               end
 
   return card_array.join(' and ') if card_array.size < 3
+
   card_array[0..-2].join(', ') + ', and ' + card_array[-1]
 end
 
-def display_hands(player_hand, dealer_hand, show_all = false)
+def display_hands(participants, show_all = false)
   puts ''
-  if show_all == false
-    prompt "Dealer has: #{list_cards(dealer_hand, true)}"
-  else
-    prompt "Dealer has: #{list_cards(dealer_hand)}"
+  participants.each do |key, value|
+    if !value[:user_controlled] && show_all == false
+      prompt "#{key.to_s.capitalize} has: #{list_cards(value[:hand], true)}"
+    else
+      prompt "#{key.to_s.capitalize} has: #{list_cards(value[:hand])}"
+    end
   end
-
-  prompt "Player has: #{list_cards(player_hand)}"
 end
 
-def hit_or_stay?
+def hit?
   loop do
     prompt 'Do you want to hit or stay? (h or s)'
     answer = gets.chomp.downcase
-    return answer if answer.start_with?('h', 's')
+    return true if answer.start_with?('h')
+    return false if answer.start_with?('s')
 
     prompt 'Invalid input.'
   end
 end
 
-def last_card_value(hand, total, ace_count)
-  last_card_value = ALL_CARDS[hand[-1]]
-  total += last_card_value
+def update_score!(participant)
+  last_card_value = ALL_CARDS[participant[:hand][-1]]
 
-  ace_count += 1 if last_card_value == 11
-  [total, ace_count]
+  participant[:score] += last_card_value
+  participant[:ace_count] += 1 if last_card_value == 11
 end
 
-def convert_ace_if_needed(total, ace_tally)
+def convert_ace_if_needed!(participant)
   loop do
-    if total > TARGET_NUMBER && ace_tally.positive?
-      total -= 10
-      ace_tally -= 1
+    if participant[:score] > TARGET_NUMBER && participant[:ace_count].positive?
+      participant[:score] -= 10
+      participant[:ace_count] -= 1
     else
       break
     end
   end
-  [total, ace_tally]
 end
 
-def get_result(player_score, dealer_score)
-  return :player if player_score > dealer_score
-  return :dealer if dealer_score > player_score
+def get_result(participants)
+  contenders = participants.reject { |_, value| value[:bust] }
+  winner = contenders.max_by { |_, value| value[:score] }
+
+  return winner[0] if contenders.one? do |_, value|
+    value[:score] == winner[1][:score]
+  end
+
   :tie
 end
 
-def display_results(player_hand, player_score, dealer_hand, dealer_score)
+def display_results(participants)
   puts ''
   puts "=============="
-  prompt "Dealer has #{list_cards(dealer_hand)}, for a total of: #{dealer_score}"
-  prompt "Player has #{list_cards(player_hand)}, for a total of: #{player_score}"
+  participants.each do |key, value|
+    prompt "#{key.capitalize} has #{list_cards(value[:hand])}, "\
+           "for a total of: #{value[:score]}"
+    prompt "#{key.capitalize} Bust!" if value[:bust]
+  end
   puts "=============="
   puts ''
 end
@@ -114,120 +124,93 @@ def continue_playing?
   end
 end
 
-prompt "Welcome to Twenty-one! The player with the most points wins!"
-prompt "But be careful, If you go over #{TARGET_NUMBER}, you lose."
+prompt "Welcome to Twenty-one! The player with the most points without going "\
+       "over the target number wins!"
+prompt "The target number for this game is #{TARGET_NUMBER}. "\
+       "If you go over #{TARGET_NUMBER}, you lose."
 
-# Cards will be strings with the first character signifying suit
-# h5 => 5 of hearts, sking => King of spades, etc.
-ALL_CARDS = create_deck(['c', 'd', 'h', 's']).freeze
+# Each cards is an array with index 0 as the suit and index 1 as the rank.
+ALL_CARDS = create_deck(['clubs', 'diamonds', 'hearts', 'spades']).freeze
 
 deck = ALL_CARDS.keys
 discard_pile = []
 
 loop do
-  player_games_won = 0
-  dealer_games_won = 0
+  games_won = { player: 0, dealer: 0 }
 
-  until player_games_won >= 5 || dealer_games_won >= 5
-    player_hand = []
-    dealer_hand = []
+  loop do
+    participants = {
+      player: { hand: [], ace_count: 0, score: 0, stayed: false,
+                bust: false, user_controlled: true },
+      dealer: { hand: [], ace_count: 0, score: 0, stayed: false,
+                bust: false, user_controlled: false }
+    }
 
-    player_score = 0
-    dealer_score = 0
-
-    player_ace_count = 0
-    dealer_ace_count = 0
-
+    # Deal starting cards
     2.times do
-      deal_card!(deck, player_hand, discard_pile)
-      player_score, player_ace_count = last_card_value(player_hand, player_score, player_ace_count)
-
-      deal_card!(deck, dealer_hand, discard_pile)
-      dealer_score, dealer_ace_count = last_card_value(dealer_hand, dealer_score, dealer_ace_count)
+      participants.each do |_, value|
+        deal_card!(deck, value[:hand], discard_pile)
+        update_score!(value)
+      end
     end
 
-    player_bust = false
-    dealer_bust = false
-
-    player_stayed = false
-    dealer_stayed = false
-
+    # Begin play
     loop do
-      display_hands(player_hand, dealer_hand)
+      display_hands(participants)
 
       # Player turn
-      unless player_stayed
-        if hit_or_stay?.downcase.start_with?('h')
-          deal_card!(deck, player_hand, discard_pile)
-          player_score, player_ace_count = last_card_value(player_hand, player_score, player_ace_count)
-        else
-          player_stayed = true
+      participants.each do |_, value|
+        unless value[:stayed]
+          if !value[:user_controlled] && value[:score] < (TARGET_NUMBER - 4)
+            deal_card!(deck, value[:hand], discard_pile)
+            update_score!(value)
+          elsif value[:user_controlled] && hit?
+            deal_card!(deck, value[:hand], discard_pile)
+            update_score!(value)
+          else
+            value[:stayed] = true
+          end
+
+          convert_ace_if_needed!(value)
+
+          if value[:score] > TARGET_NUMBER
+            value[:bust] = true
+            break
+          end
         end
       end
-
-      player_score, player_ace_count = convert_ace_if_needed(player_score, player_ace_count)
-
-      if player_score > TARGET_NUMBER
-        player_bust = true
-        break
-      end
-
-      # Dealer turn
-      unless dealer_stayed
-        if dealer_score < (TARGET_NUMBER - 4)
-          deal_card!(deck, dealer_hand, discard_pile)
-          dealer_score, dealer_ace_count = last_card_value(dealer_hand, dealer_score, dealer_ace_count)
-        else
-          dealer_stayed = true
-        end
-      end
-
-      dealer_score, dealer_ace_count = convert_ace_if_needed(dealer_score, dealer_ace_count)
-
-      if dealer_score > TARGET_NUMBER
-        dealer_bust = true
-        break
-      end
-
-      break if player_stayed && dealer_stayed
+      break if participants.all? { |_, value| value[:stayed] } ||
+               participants.any? { |_, value| value[:bust] }
     end
 
-    display_hands(player_hand, dealer_hand, true)
+    display_hands(participants)
 
     # Display Winner
-    display_results(player_hand, player_score, dealer_hand, dealer_score)
+    display_results(participants)
 
-    if player_bust
-      prompt "Player bust, Dealer wins!"
-      dealer_games_won += 1
-    elsif dealer_bust
-      prompt "Dealer bust, Player wins!"
-      player_games_won += 1
+    winner = get_result(participants)
+    if games_won.key?(winner)
+      games_won[winner] += 1
+      prompt "#{winner.capitalize} wins!"
     else
-      case get_result(player_score, dealer_score)
-      when :player
-        prompt "Player wins!"
-        player_games_won += 1
-      when :dealer
-        prompt "Dealer wins!"
-        dealer_games_won += 1
-      when :tie
-        prompt "Tie!"
-      end
+      prompt "Tie!"
     end
 
-    prompt "Player: #{player_games_won}, Dealer: #{dealer_games_won}"
+    games_won.each do |participant, won|
+      prompt "#{participant.capitalize}: #{won}"
+    end
+
+    participants.each { |_, value| discard_pile << value[:hand] }
+
+    break if games_won.any? { |_, won| won == 5 }
   end
 
-  if player_games_won >= 5
-    puts "You won! Congratulations!"
-  else
-    puts "Dealer won."
+  puts ''
+  games_won.each do |participant, won|
+    prompt "#{participant.capitalize} won 5 games!" if won == 5
   end
 
   break unless continue_playing?
-
-  discard_pile << player_hand + dealer_hand
 end
 
 prompt 'Thank you for playing! Good bye!'
