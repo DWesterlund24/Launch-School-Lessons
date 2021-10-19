@@ -21,12 +21,12 @@ def clear_terminal
 end
 
 def create_deck(array_of_suit_names)
-  array_of_suit_names.each_with_object({}) do |suit_name, object|
+  array_of_suit_names.each_with_object({}) do |suit_name, deck|
     suit = CARDS_IN_SUIT.map do |rank, value|
       [{suit: suit_name, rank: rank}, value]
     end.to_h
 
-    object.merge!(suit)
+    deck.merge!(suit)
   end
 end
 
