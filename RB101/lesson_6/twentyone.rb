@@ -72,8 +72,8 @@ def hit?
     puts ''
     prompt 'Do you want to hit or stay? (h or s)'
     answer = gets.chomp.downcase
-    return true if answer.start_with?('h')
-    return false if answer.start_with?('s')
+    return true if answer == 'h' || answer == 'hit'
+    return false if answer == 's' || answer == 'stay'
 
     prompt 'Invalid input.'
   end
@@ -125,8 +125,8 @@ def continue_playing?
     puts ''
     prompt 'Would you like to continue playing? (y or n)'
     answer = gets.chomp.downcase
-    return true if answer.start_with?('y')
-    return false if answer.start_with?('n')
+    return true if answer == 'y' || answer == 'yes'
+    return false if answer == 'n' || answer == 'no'
 
     prompt 'Invalid input'
   end
@@ -139,7 +139,7 @@ prompt "The target number for this game is #{TARGET_NUMBER}. "\
        "If you go over #{TARGET_NUMBER}, you lose."
 wait_for_user
 
-# Each cards is an array with index 0 as the suit and index 1 as the rank.
+# Each card is an array with index 0 as the suit and index 1 as the rank.
 ALL_CARDS = create_deck(SUIT_NAMES).freeze
 
 deck = ALL_CARDS.keys
