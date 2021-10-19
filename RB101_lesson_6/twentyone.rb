@@ -1,21 +1,23 @@
-require 'pry-byebug'
-
 CARDS_IN_SUIT = { '2' => 2, '3' => 3, '4' => 4, '5' => 5, '6' => 6, '7' => 7,
                   '8' => 8, '9' => 9, '10' => 10, 'jack' => 10, 'queen' => 10,
                   'king' => 10, 'ace' => 11 }.freeze
-
+SUIT_NAMES = ['clubs', 'diamonds', 'hearts', 'spades'].freeze
 TARGET_NUMBER = 21
 
 def prompt(string)
   puts('=> ' + string)
 end
 
-# Argument is an array of characters
-# Each string in the array represents a suit
-def create_deck(array)
-  array.each_with_object({}) do |suit_name, object|
-    suit = CARDS_IN_SUIT.map do |key, value|
-      [[suit_name, key], value]
+def wait_for_user
+  puts ''
+  prompt 'Press enter to conitinue'
+  gets
+end
+
+def create_deck(array_of_suit_names)
+  array_of_suit_names.each_with_object({}) do |suit_name, object|
+    suit = CARDS_IN_SUIT.map do |rank, value|
+      [[suit_name, rank], value]
     end.to_h
 
     object.merge!(suit)
@@ -23,7 +25,7 @@ def create_deck(array)
 end
 
 def deal_card!(deck, hand, discards)
-  # Shuffle discards into deck as necessary
+  # Insert discards into deck when deck empty
   if deck.empty?
     (deck << discards).flatten!(2)
     discards.clear
@@ -50,18 +52,20 @@ def list_cards(card_array, hide_subsequent = false)
 end
 
 def display_hands(participants, show_all = false)
-  puts ''
-  participants.each do |key, value|
-    if !value[:user_controlled] && show_all == false
-      prompt "#{key.to_s.capitalize} has: #{list_cards(value[:hand], true)}"
+  system 'clear'
+  participants.each do |name, attributes|
+    if !attributes[:user_controlled] && show_all == false
+      prompt "#{name.to_s.capitalize} has: "\
+             "#{list_cards(attributes[:hand], true)}"
     else
-      prompt "#{key.to_s.capitalize} has: #{list_cards(value[:hand])}"
+      prompt "#{name.to_s.capitalize} has: #{list_cards(attributes[:hand])}"
     end
   end
 end
 
 def hit?
   loop do
+    puts ''
     prompt 'Do you want to hit or stay? (h or s)'
     answer = gets.chomp.downcase
     return true if answer.start_with?('h')
@@ -90,23 +94,23 @@ def convert_ace_if_needed!(participant)
 end
 
 def get_result(participants)
-  contenders = participants.reject { |_, value| value[:bust] }
-  winner = contenders.max_by { |_, value| value[:score] }
+  contenders = participants.reject { |_, attributes| attributes[:bust] }
+  winner = contenders.max_by { |_, attributes| attributes[:score] }
 
-  return winner[0] if contenders.one? do |_, value|
-    value[:score] == winner[1][:score]
+  return winner[0] if contenders.one? do |_, attributes|
+    attributes[:score] == winner[1][:score]
   end
 
   :tie
 end
 
 def display_results(participants)
-  puts ''
+  system 'clear'
   puts "=============="
-  participants.each do |key, value|
-    prompt "#{key.capitalize} has #{list_cards(value[:hand])}, "\
-           "for a total of: #{value[:score]}"
-    prompt "#{key.capitalize} Bust!" if value[:bust]
+  participants.each do |name, attributes|
+    prompt "#{name.capitalize} has #{list_cards(attributes[:hand])}, "\
+           "for a total of: #{attributes[:score]}"
+    prompt "#{name.capitalize} Bust!" if attributes[:bust]
   end
   puts "=============="
   puts ''
@@ -124,13 +128,15 @@ def continue_playing?
   end
 end
 
+system 'clear'
 prompt "Welcome to Twenty-one! The player with the most points without going "\
        "over the target number wins!"
 prompt "The target number for this game is #{TARGET_NUMBER}. "\
        "If you go over #{TARGET_NUMBER}, you lose."
+wait_for_user
 
 # Each cards is an array with index 0 as the suit and index 1 as the rank.
-ALL_CARDS = create_deck(['clubs', 'diamonds', 'hearts', 'spades']).freeze
+ALL_CARDS = create_deck(SUIT_NAMES).freeze
 
 deck = ALL_CARDS.keys
 discard_pile = []
@@ -148,9 +154,9 @@ loop do
 
     # Deal starting cards
     2.times do
-      participants.each do |_, value|
-        deal_card!(deck, value[:hand], discard_pile)
-        update_score!(value)
+      participants.each do |_, attributes|
+        deal_card!(deck, attributes[:hand], discard_pile)
+        update_score!(attributes)
       end
     end
 
@@ -158,29 +164,27 @@ loop do
     loop do
       display_hands(participants)
 
-      # Player turn
-      participants.each do |_, value|
-        unless value[:stayed]
-          if !value[:user_controlled] && value[:score] < (TARGET_NUMBER - 4)
-            deal_card!(deck, value[:hand], discard_pile)
-            update_score!(value)
-          elsif value[:user_controlled] && hit?
-            deal_card!(deck, value[:hand], discard_pile)
-            update_score!(value)
+      # Participant's turns
+      participants.each do |_, attributes|
+        unless attributes[:stayed]
+          if !attributes[:user_controlled] && attributes[:score] < (TARGET_NUMBER - 4) ||
+             attributes[:user_controlled] && hit?
+            deal_card!(deck, attributes[:hand], discard_pile)
+            update_score!(attributes)
           else
-            value[:stayed] = true
+            attributes[:stayed] = true
           end
 
-          convert_ace_if_needed!(value)
+          convert_ace_if_needed!(attributes)
 
-          if value[:score] > TARGET_NUMBER
-            value[:bust] = true
+          if attributes[:score] > TARGET_NUMBER
+            attributes[:bust] = true
             break
           end
         end
       end
-      break if participants.all? { |_, value| value[:stayed] } ||
-               participants.any? { |_, value| value[:bust] }
+      break if participants.all? { |_, attributes| attributes[:stayed] } ||
+               participants.any? { |_, attributes| attributes[:bust] }
     end
 
     display_hands(participants)
@@ -195,17 +199,20 @@ loop do
     else
       prompt "Tie!"
     end
-
+    
+    puts ''
     games_won.each do |participant, won|
       prompt "#{participant.capitalize}: #{won}"
     end
 
-    participants.each { |_, value| discard_pile << value[:hand] }
+    wait_for_user
+
+    participants.each { |_, attributes| discard_pile << attributes[:hand] }
 
     break if games_won.any? { |_, won| won == 5 }
   end
 
-  puts ''
+  system 'clear'
   games_won.each do |participant, won|
     prompt "#{participant.capitalize} won 5 games!" if won == 5
   end
@@ -213,4 +220,4 @@ loop do
   break unless continue_playing?
 end
 
-prompt 'Thank you for playing! Good bye!'
+prompt 'Thank you for playing! Goodbye!'
