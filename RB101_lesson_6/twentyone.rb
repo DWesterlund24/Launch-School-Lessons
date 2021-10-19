@@ -14,6 +14,10 @@ def wait_for_user
   gets
 end
 
+def clear_terminal
+  system 'clear'
+end
+
 def create_deck(array_of_suit_names)
   array_of_suit_names.each_with_object({}) do |suit_name, object|
     suit = CARDS_IN_SUIT.map do |rank, value|
@@ -52,7 +56,7 @@ def list_cards(card_array, hide_subsequent = false)
 end
 
 def display_hands(participants, show_all = false)
-  system 'clear'
+  clear_terminal
   participants.each do |name, attributes|
     if !attributes[:user_controlled] && show_all == false
       prompt "#{name.to_s.capitalize} has: "\
@@ -105,7 +109,7 @@ def get_result(participants)
 end
 
 def display_results(participants)
-  system 'clear'
+  clear_terminal
   puts "=============="
   participants.each do |name, attributes|
     prompt "#{name.capitalize} has #{list_cards(attributes[:hand])}, "\
@@ -128,7 +132,7 @@ def continue_playing?
   end
 end
 
-system 'clear'
+clear_terminal
 prompt "Welcome to Twenty-one! The player with the most points without going "\
        "over the target number wins!"
 prompt "The target number for this game is #{TARGET_NUMBER}. "\
@@ -199,7 +203,8 @@ loop do
     else
       prompt "Tie!"
     end
-    
+
+    # Display games won
     puts ''
     games_won.each do |participant, won|
       prompt "#{participant.capitalize}: #{won}"
@@ -212,7 +217,7 @@ loop do
     break if games_won.any? { |_, won| won == 5 }
   end
 
-  system 'clear'
+  clear_terminal
   games_won.each do |participant, won|
     prompt "#{participant.capitalize} won 5 games!" if won == 5
   end
