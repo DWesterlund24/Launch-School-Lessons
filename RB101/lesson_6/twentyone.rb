@@ -1,8 +1,10 @@
 CARDS_IN_SUIT = { '2' => 2, '3' => 3, '4' => 4, '5' => 5, '6' => 6, '7' => 7,
-                  '8' => 8, '9' => 9, '10' => 10, 'jack' => 10, 'queen' => 10,
-                  'king' => 10, 'ace' => 11 }.freeze
-SUIT_NAMES = ['clubs', 'diamonds', 'hearts', 'spades'].freeze
+                  '8' => 8, '9' => 9, '10' => 10, 'Jack' => 10, 'Queen' => 10,
+                  'King' => 10, 'Ace' => 11 }.freeze
+SUIT_NAMES = ['Clubs', 'Diamonds', 'Hearts', 'Spades'].freeze
 TARGET_NUMBER = 21
+
+DISPLAY_SPACE = 19
 
 def prompt(string)
   puts('=> ' + string)
@@ -21,7 +23,7 @@ end
 def create_deck(array_of_suit_names)
   array_of_suit_names.each_with_object({}) do |suit_name, object|
     suit = CARDS_IN_SUIT.map do |rank, value|
-      [[suit_name, rank], value]
+      [{suit: suit_name, rank: rank}, value]
     end.to_h
 
     object.merge!(suit)
@@ -40,14 +42,39 @@ def deal_card!(deck, hand, discards)
   deck.delete(random_card)
 end
 
-# Return list of card names without suit
+def deal_starting_cards!(deck, participants, discard_pile)
+  2.times do
+    participants.each do |_, attributes|
+      deal_card!(deck, attributes[:hand], discard_pile)
+      update_score!(attributes)
+    end
+  end
+end
+
+# Show games won
+def show_games_won(games_won)
+  clear_terminal
+  puts ' Games Won '.center(BORDER_SIZE, '=')
+  games_won.each_key do |name|
+    print "#{name.capitalize}: #{games_won[name]}".center(DISPLAY_SPACE + 2)
+  end
+  puts ''
+  puts '=' * BORDER_SIZE
+  puts ''
+end
+
+# Return list of card names with suit
 def list_cards(card_array, hide_subsequent = false)
   card_array = if hide_subsequent
                  card_array.map.with_index do |card, index|
-                   index.zero? ? card[1].capitalize : 'unknown card'
+                   if index.zero?
+                    "#{card[:rank]} of #{card[:suit]}"
+                   else
+                    'unknown card'
+                   end
                  end
                else
-                 card_array.map { |card| card[1].capitalize }
+                 card_array.map { |card| "#{card[:rank]} of #{card[:suit]}" }
                end
 
   return card_array.join(' and ') if card_array.size < 3
@@ -56,15 +83,45 @@ def list_cards(card_array, hide_subsequent = false)
 end
 
 def display_hands(participants, show_all = false)
-  clear_terminal
   participants.each do |name, attributes|
     if !attributes[:user_controlled] && show_all == false
       prompt "#{name.to_s.capitalize} has: "\
-             "#{list_cards(attributes[:hand], true)}"
+             "#{list_cards(attributes[:hand], true)} for a total of ?"
     else
-      prompt "#{name.to_s.capitalize} has: #{list_cards(attributes[:hand])}"
+      prompt "#{name.to_s.capitalize} has: #{list_cards(attributes[:hand])}"\
+             " for a total of #{attributes[:score]}"
     end
   end
+end
+
+def get_card_name(card)
+  return '' if card.nil?
+  "#{card[:rank]} of #{card[:suit]}"
+end
+
+def center_with_border(string)
+  '|' + string.center(DISPLAY_SPACE) + '|'
+end
+
+def display_hands_alternate(participants, show_all = false)
+  largest_hand_size = participants.map do |_, attributes|  
+    attributes[:hand].size
+  end.max
+
+  puts ('|' + '=' * DISPLAY_SPACE + '|') * PLAYERS
+  participants.each_key { |name| print center_with_border("#{name.capitalize}'s Hand") }
+  print "\n" + center_with_border('-' * DISPLAY_SPACE) * PLAYERS
+  largest_hand_size.times do |index|
+    print "\n"
+    participants.each do |_, attributes|
+      print center_with_border(get_card_name(attributes[:hand][index]))
+    end
+  end
+  puts "\n" + center_with_border('-' * DISPLAY_SPACE) * PLAYERS
+  participants.each do |_, attributes|
+    print center_with_border("Total: #{attributes[:score]}")
+  end
+  puts "\n" + center_with_border('=' * DISPLAY_SPACE) * PLAYERS
 end
 
 def hit?
@@ -109,7 +166,6 @@ def get_result(participants)
 end
 
 def display_results(participants)
-  clear_terminal
   puts "=============="
   participants.each do |name, attributes|
     prompt "#{name.capitalize} has #{list_cards(attributes[:hand])}, "\
@@ -139,8 +195,11 @@ prompt "The target number for this game is #{TARGET_NUMBER}. "\
        "If you go over #{TARGET_NUMBER}, you lose."
 wait_for_user
 
+PLAYERS = 2
+
 # Each card is an array with index 0 as the suit and index 1 as the rank.
 ALL_CARDS = create_deck(SUIT_NAMES).freeze
+BORDER_SIZE = 21 * PLAYERS
 
 deck = ALL_CARDS.keys
 discard_pile = []
@@ -156,17 +215,12 @@ loop do
                 bust: false, user_controlled: false }
     }
 
-    # Deal starting cards
-    2.times do
-      participants.each do |_, attributes|
-        deal_card!(deck, attributes[:hand], discard_pile)
-        update_score!(attributes)
-      end
-    end
+    deal_starting_cards!(deck, participants, discard_pile)
 
     # Begin play
     loop do
-      display_hands(participants)
+      show_games_won(games_won)
+      display_hands_alternate(participants)
 
       # Participant's turns
       participants.each do |_, attributes|
@@ -191,9 +245,10 @@ loop do
                participants.any? { |_, attributes| attributes[:bust] }
     end
 
-    display_hands(participants)
+    display_hands_alternate(participants)
 
     # Display Winner
+    show_games_won(games_won)
     display_results(participants)
 
     winner = get_result(participants)
