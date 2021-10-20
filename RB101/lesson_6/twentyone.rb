@@ -23,7 +23,7 @@ end
 def create_deck(array_of_suit_names)
   array_of_suit_names.each_with_object({}) do |suit_name, deck|
     suit = CARDS_IN_SUIT.map do |rank, value|
-      [{suit: suit_name, rank: rank}, value]
+      [{ suit: suit_name, rank: rank }, value]
     end.to_h
 
     deck.merge!(suit)
@@ -31,7 +31,6 @@ def create_deck(array_of_suit_names)
 end
 
 def deal_card!(deck, hand, discards)
-  # Insert discards into deck when deck empty
   if deck.empty?
     (deck << discards).flatten!(2)
     discards.clear
@@ -47,12 +46,24 @@ def deal_starting_cards!(deck, participants, discard_pile)
     participants.each do |_, attributes|
       deal_card!(deck, attributes[:hand], discard_pile)
       update_score!(attributes)
+      convert_ace_if_needed!(attributes)
     end
   end
 end
 
-# Show games won
-def show_games_won(games_won)
+def get_card_name(card)
+  return '' if card.nil?
+  return card if card == 'Unknown Card'
+  "#{card[:rank]} of #{card[:suit]}"
+end
+
+def get_largest_hand_size(participants)
+  participants.map do |_, attributes|
+    attributes[:hand].size
+  end.max
+end
+
+def display_games_won(games_won)
   clear_terminal
   puts ' Games Won '.center(BORDER_SIZE, '=')
   games_won.each_key do |name|
@@ -63,68 +74,99 @@ def show_games_won(games_won)
   puts ''
 end
 
-# Return list of card names with suit
-def list_cards(card_array, hide_subsequent = false)
-  card_array = if hide_subsequent
-                 card_array.map.with_index do |card, index|
-                   if index.zero?
-                    "#{card[:rank]} of #{card[:suit]}"
-                   else
-                    'unknown card'
-                   end
-                 end
-               else
-                 card_array.map { |card| "#{card[:rank]} of #{card[:suit]}" }
-               end
-
-  return card_array.join(' and ') if card_array.size < 3
-
-  card_array[0..-2].join(', ') + ', and ' + card_array[-1]
-end
-
-def display_hands(participants, show_all = false)
-  participants.each do |name, attributes|
-    if !attributes[:user_controlled] && show_all == false
-      prompt "#{name.to_s.capitalize} has: "\
-             "#{list_cards(attributes[:hand], true)} for a total of ?"
-    else
-      prompt "#{name.to_s.capitalize} has: #{list_cards(attributes[:hand])}"\
-             " for a total of #{attributes[:score]}"
-    end
-  end
-end
-
-def get_card_name(card)
-  return '' if card.nil?
-  "#{card[:rank]} of #{card[:suit]}"
-end
-
 def center_with_border(string)
   '|' + string.center(DISPLAY_SPACE) + '|'
 end
 
-def display_hands_alternate(participants, show_all = false)
-  largest_hand_size = participants.map do |_, attributes|  
-    attributes[:hand].size
-  end.max
-
-  puts ('|' + '=' * DISPLAY_SPACE + '|') * PLAYERS
-  participants.each_key { |name| print center_with_border("#{name.capitalize}'s Hand") }
-  print "\n" + center_with_border('-' * DISPLAY_SPACE) * PLAYERS
-  largest_hand_size.times do |index|
-    print "\n"
-    participants.each do |_, attributes|
-      print center_with_border(get_card_name(attributes[:hand][index]))
-    end
-  end
-  puts "\n" + center_with_border('-' * DISPLAY_SPACE) * PLAYERS
-  participants.each do |_, attributes|
-    print center_with_border("Total: #{attributes[:score]}")
-  end
-  puts "\n" + center_with_border('=' * DISPLAY_SPACE) * PLAYERS
+def hands_border_line(char)
+  center_with_border(char * DISPLAY_SPACE) * PLAYERS
 end
 
-def hit?
+def grand_result_border_top(string)
+  string.center(BORDER_SIZE, '*')
+end
+
+def grand_result_border_mid(string)
+  '*' + string.center(BORDER_SIZE - 2) + '*'
+end
+
+def names_in_border(participants)
+  string = ''
+
+  participants.each_key do |name|
+    string += center_with_border("#{name.capitalize}'s Hand")
+  end
+  string
+end
+
+def extract_hands(participants, show_all)
+  participants.map do |_, attributes|
+    attributes[:hand].map.with_index do |card, index|
+      if !attributes[:user_controlled] && !show_all
+        index.zero? ? card : 'Unknown Card'
+      else
+        card
+      end
+    end
+  end
+end
+
+def print_hands_in_border(participants, show_all)
+  largest_hand_size = get_largest_hand_size(participants)
+
+  largest_hand_size.times do |index|
+    extract_hands(participants, show_all).each do |hand|
+      print center_with_border(get_card_name(hand[index]))
+    end
+    puts ''
+  end
+end
+
+def total_in_border(participants, show_all)
+  participants.each_with_object('') do |(_, attributes), string|
+    score = if !attributes[:user_controlled] && !show_all
+              '?'
+            else
+              attributes[:score].to_s
+            end
+
+    score += ' Bust!' if attributes[:bust]
+
+    string << center_with_border("Total: #{score}")
+  end
+end
+
+def display_hands(participants, show_all = false)
+  puts hands_border_line('=')
+  puts names_in_border(participants)
+  puts hands_border_line('-')
+  print_hands_in_border(participants, show_all)
+  puts hands_border_line('-')
+  puts total_in_border(participants, show_all)
+  puts hands_border_line("=")
+end
+
+def show_grand_winner(games_won)
+  clear_terminal
+  winner = get_grand_winner(games_won)
+  puts grand_result_border_top(' Grand Result ')
+  puts grand_result_border_mid('')
+  puts grand_result_border_mid("#{winner} wins!")
+  puts grand_result_border_mid('')
+  puts grand_result_border_top('')
+end
+
+def hit?(attributes)
+  unless attributes[:stayed]
+    if attributes[:user_controlled]
+      user_hit?
+    else
+      computer_hit?(attributes)
+    end
+  end
+end
+
+def user_hit?
   loop do
     puts ''
     prompt 'Do you want to hit or stay? (h or s)'
@@ -134,6 +176,40 @@ def hit?
 
     prompt 'Invalid input.'
   end
+end
+
+def computer_hit?(attributes)
+  attributes[:score] < (TARGET_NUMBER - 4)
+end
+
+def deal_or_set_stayed!(deck, attributes, discard_pile)
+  if hit?(attributes)
+    deal_card!(deck, attributes[:hand], discard_pile)
+    update_score!(attributes)
+  else
+    attributes[:stayed] = true
+  end
+end
+
+def bust?(attributes)
+  attributes[:score] > TARGET_NUMBER
+end
+
+def participants_turns!(deck, participants, discard_pile)
+  participants.each do |_, attributes|
+    deal_or_set_stayed!(deck, attributes, discard_pile)
+    convert_ace_if_needed!(attributes)
+
+    if bust?(attributes)
+      attributes[:bust] = true
+      break
+    end
+  end
+end
+
+def end_round?(participants)
+  participants.all? { |_, attributes| attributes[:stayed] } ||
+    participants.any? { |_, attributes| attributes[:bust] }
 end
 
 def update_score!(participant)
@@ -165,15 +241,30 @@ def get_result(participants)
   :tie
 end
 
-def display_results(participants)
-  puts "=============="
-  participants.each do |name, attributes|
-    prompt "#{name.capitalize} has #{list_cards(attributes[:hand])}, "\
-           "for a total of: #{attributes[:score]}"
-    prompt "#{name.capitalize} Bust!" if attributes[:bust]
-  end
-  puts "=============="
+def display_winning_message(winner)
+  winning_message = if winner == :tie
+                      'Tie!'
+                    else
+                      "#{winner.capitalize} wins!"
+                    end
+
   puts ''
+  puts winning_message.center((DISPLAY_SPACE + 2) * PLAYERS)
+  puts ''
+end
+
+def update_games_won!(winner, games_won)
+  games_won[winner] += 1 if games_won.key?(winner)
+end
+
+def get_grand_winner(games_won)
+  games_won.each_with_object('') do |(participant, won), winner|
+    winner << participant.capitalize.to_s if won == 5
+  end
+end
+
+def grand_winner?(games_won)
+  games_won.any? { |_, won| won == 5 }
 end
 
 def continue_playing?
@@ -197,7 +288,6 @@ wait_for_user
 
 PLAYERS = 2
 
-# Each card is an array with index 0 as the suit and index 1 as the rank.
 ALL_CARDS = create_deck(SUIT_NAMES).freeze
 BORDER_SIZE = 21 * PLAYERS
 
@@ -219,63 +309,31 @@ loop do
 
     # Begin play
     loop do
-      show_games_won(games_won)
-      display_hands_alternate(participants)
+      display_games_won(games_won)
+      display_hands(participants)
 
-      # Participant's turns
-      participants.each do |_, attributes|
-        unless attributes[:stayed]
-          if !attributes[:user_controlled] && attributes[:score] < (TARGET_NUMBER - 4) ||
-             attributes[:user_controlled] && hit?
-            deal_card!(deck, attributes[:hand], discard_pile)
-            update_score!(attributes)
-          else
-            attributes[:stayed] = true
-          end
+      participants_turns!(deck, participants, discard_pile)
 
-          convert_ace_if_needed!(attributes)
-
-          if attributes[:score] > TARGET_NUMBER
-            attributes[:bust] = true
-            break
-          end
-        end
-      end
-      break if participants.all? { |_, attributes| attributes[:stayed] } ||
-               participants.any? { |_, attributes| attributes[:bust] }
+      break if end_round?(participants)
     end
-
-    display_hands_alternate(participants)
 
     # Display Winner
-    show_games_won(games_won)
-    display_results(participants)
 
     winner = get_result(participants)
-    if games_won.key?(winner)
-      games_won[winner] += 1
-      prompt "#{winner.capitalize} wins!"
-    else
-      prompt "Tie!"
-    end
+    update_games_won!(winner, games_won)
 
-    # Display games won
-    puts ''
-    games_won.each do |participant, won|
-      prompt "#{participant.capitalize}: #{won}"
-    end
+    display_games_won(games_won)
+    display_hands(participants, true)
+    display_winning_message(winner)
 
     wait_for_user
 
     participants.each { |_, attributes| discard_pile << attributes[:hand] }
 
-    break if games_won.any? { |_, won| won == 5 }
+    break if grand_winner?(games_won)
   end
 
-  clear_terminal
-  games_won.each do |participant, won|
-    prompt "#{participant.capitalize} won 5 games!" if won == 5
-  end
+  show_grand_winner(games_won)
 
   break unless continue_playing?
 end
