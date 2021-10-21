@@ -3,8 +3,10 @@ CARDS_IN_SUIT = { '2' => 2, '3' => 3, '4' => 4, '5' => 5, '6' => 6, '7' => 7,
                   'King' => 10, 'Ace' => 11 }.freeze
 SUIT_NAMES = ['Clubs', 'Diamonds', 'Hearts', 'Spades'].freeze
 TARGET_NUMBER = 21
+PLAYERS = 2
 
 DISPLAY_SPACE = 19
+BORDER_SIZE = 21 * PLAYERS
 
 def prompt(string)
   puts('=> ' + string)
@@ -286,10 +288,7 @@ prompt "The target number for this game is #{TARGET_NUMBER}. "\
        "If you go over #{TARGET_NUMBER}, you lose."
 wait_for_user
 
-PLAYERS = 2
-
 ALL_CARDS = create_deck(SUIT_NAMES).freeze
-BORDER_SIZE = 21 * PLAYERS
 
 deck = ALL_CARDS.keys
 discard_pile = []
