@@ -11,25 +11,21 @@ module UIControl
   end
 end
 
-module RPSSLRules
-  # rubocop:disable Layout/LineLength
-  def game_rules
-    "Rock Paper Scissors Spock Lizard is a variation of the classic Rock Paper Scissors game but there are now 5 choices instead of 3. In each round, two players each choose a move which are then compared. Every move chosen is able to beat two other moves as well as be beaten by two other moves. The rules for the winner of each pairing will be as follows: " \
-    "\n" \
-    "\nRock beats Lizard and Scissors" \
-    "\nPaper beats Rock and Spock" \
-    "\nScissors beats Paper and Lizard" \
-    "\nSpock beats Scissors and Rock" \
-    "\nLizard beats Spock and Paper" \
-    "\n" \
-    "\nIf both players choose the same move, no points are awarded. Otherwise the winner of the pairing is awarded 1 point. Once a player obtains a number of points equal to the chosen target number, that player is declared the grand winner."
+module InputValidation
+  def name_valid?(name, max_length)
+    !(name.empty?) && name.size <= max_length
   end
-  # rubocop:enable Layout/LineLength
 
-  def display_rules
-    clear_terminal
-    puts game_rules
-    wait_for_input
+  def choice_applicable?(choice, valid_options)
+    if valid_options.class == Array
+      valid_options.include?(choice)
+    else
+      choice == valid_options
+    end
+  end
+
+  def number_within_range?(number, range)
+    range.include?(number)
   end
 end
 
@@ -107,17 +103,10 @@ class Player
 
   include UIControl
 
-  MAX_NAME_LENGTH = 16
-
   def initialize
     set_name
     @score = 0
     @data_to_view = nil
-  end
-
-  def self.new_cpu
-    cpu_class = [R2D2, Hal, Chappie, Sonny, Number5].sample
-    cpu_class.new
   end
 
   private
@@ -136,15 +125,19 @@ class Player
 end
 
 class Human < Player
+  include InputValidation
+
+  MAX_NAME_LENGTH = 16
+
   def choose
     choice = nil
     loop do
       choice = request_choice
-      check_for_view_request(choice)
+      check_if_view_request(choice)
       return if data_to_view
 
       choice = convert_to_number(choice)
-      break if choice_valid?(choice)
+      break if choice_applicable?(choice, Move::VALUES.keys)
 
       puts "Sorry, invalid choice."
     end
@@ -159,9 +152,9 @@ class Human < Player
     loop do
       puts "What's your name? (max: #{MAX_NAME_LENGTH} characters)"
       player_name = gets.chomp.strip
-      break unless player_name.empty? || player_name.size > MAX_NAME_LENGTH
+      break if name_valid?(player_name, MAX_NAME_LENGTH)
 
-      puts "Sorry, must enter a value."
+      puts "Name must be between 1 and #{MAX_NAME_LENGTH} characters long."
     end
     self.name = player_name
   end
@@ -171,13 +164,13 @@ class Human < Player
     puts
     puts "Enter Rock(1), Paper(2), Scissors(3), Spock(4), Lizard(5) " \
          "to select a move."
-    gets.chomp
+    gets.chomp.downcase
   end
 
-  def check_for_view_request(choice)
-    if choice.downcase == 'v'
+  def check_if_view_request(choice)
+    if choice_applicable?(choice, 'v')
       self.data_to_view = :all_moves
-    elsif choice.downcase == 'r'
+    elsif choice_applicable?(choice, 'r')
       self.data_to_view = :rules
     end
   end
@@ -187,14 +180,14 @@ class Human < Player
     choice = Move::VALUES.key(choice) if Move::VALUES.value?(choice)
     choice.to_i
   end
-
-  def choice_valid?(choice)
-    valid_numbers = Move::VALUES.keys.to_a
-    valid_numbers.include?(choice)
-  end
 end
 
 class Computer < Player
+  def self.new_cpu
+    cpu_class = [R2D2, Hal, Chappie, Sonny, Number5].sample
+    cpu_class.new
+  end
+
   def choose
     choice = cpu_choice_number
     create_move(choice)
@@ -274,16 +267,16 @@ end
 
 # Game Orchestration Engine
 class RPSSLGame
-  include RPSSLRules, UIControl
+  include UIControl, InputValidation
 
-  MAX_NAME_LENGTH = Player::MAX_NAME_LENGTH
-  ALL_MOVES_LENGTH = (MAX_NAME_LENGTH * 3) + 10
+  TABLE_CONTENT_SIZE = Human::MAX_NAME_LENGTH
+  ALL_MOVES_LENGTH = (TABLE_CONTENT_SIZE * 3) + 10
 
   MAX_TARGET_SCORE = 10
 
   def initialize
     @human = Human.new
-    @computer = Player.new_cpu
+    @computer = Computer.new_cpu
     @all_moves = {}
     @current_game = 0
   end
@@ -322,7 +315,7 @@ class RPSSLGame
 
   def setup_new_game
     choose_target_score
-    self.current_game += 1
+    self.current_game = current_game + 1
 
     all_moves[current_game] = {
       :game_num => current_game,
@@ -338,12 +331,12 @@ class RPSSLGame
     loop do
       puts "How many points do you want to play up to? " \
            "(min: 1, max: #{MAX_TARGET_SCORE})"
-      answer = gets.chomp
-      break if answer.to_i > 0 && answer.to_i < MAX_TARGET_SCORE
+      answer = gets.chomp.to_i
+      break if number_within_range?(answer, 1..MAX_TARGET_SCORE)
 
       puts "Please choose a target score between 1 and #{MAX_TARGET_SCORE}."
     end
-    self.target_score = answer.to_i
+    self.target_score = answer
   end
 
   def core_gameplay_loop
@@ -390,15 +383,15 @@ class RPSSLGame
   end
 
   def play_again?
-    answer = 'view'
+    answer = 'v'
     loop do
-      display_grand_winner if answer == 'v' || answer == 'view'
+      display_grand_winner if choice_applicable?(answer, ['v', 'view'])
       print_play_again_options
       answer = gets.chomp.downcase
 
       answer = interpret_play_again_response(answer)
 
-      break if answer == true || answer == false
+      break if choice_applicable?(answer, [true, false])
     end
 
     answer
@@ -438,6 +431,26 @@ class RPSSLGame
     puts
   end
 
+  def display_rules
+    clear_terminal
+    puts game_rules
+    wait_for_input
+  end
+
+  def game_rules
+    <<-RULES
+Rock Paper Scissors Spock Lizard is a variation of the classic Rock Paper Scissors game but there are now 5 choices instead of 3. In each round, two players each choose a move which are then compared. Every move chosen is able to beat two other moves as well as be beaten by two other moves. The rules for the winner of each pairing will be as follows:
+
+    Rock beats Lizard and Scissors
+    Paper beats Rock and Spock
+    Scissors beats Paper and Lizard
+    Spock beats Scissors and Rock
+    Lizard beats Spock and Paper
+
+If both players choose the same move, no points are awarded. Otherwise the winner of the pairing is awarded 1 point. Once a player obtains a number of points equal to the chosen target number, that player is declared the grand winner.
+      RULES
+  end
+
   def display_scoreboard
     clear_terminal
     print_scoreboard_seperator
@@ -449,13 +462,13 @@ class RPSSLGame
   end
 
   def print_scoreboard_seperator
-    middle = '-' * MAX_NAME_LENGTH
+    middle = '-' * TABLE_CONTENT_SIZE
     puts "+-#{middle}---#{middle}-+"
   end
 
   def print_scoreboard_line(string1, string2)
-    puts "| #{string1.center(MAX_NAME_LENGTH)} " \
-         "| #{string2.center(MAX_NAME_LENGTH)} |"
+    puts "| #{string1.center(TABLE_CONTENT_SIZE)} " \
+         "| #{string2.center(TABLE_CONTENT_SIZE)} |"
   end
 
   def display_all_moves
@@ -491,13 +504,14 @@ class RPSSLGame
   end
 
   def print_all_moves_seperator
-    middle = '-' * MAX_NAME_LENGTH
+    middle = '-' * TABLE_CONTENT_SIZE
     puts "+-#{middle}-----#{middle}-+-#{middle}-+"
   end
 
   def print_all_moves_line2(str1, str2, str3)
-    puts "| #{str1.ljust(MAX_NAME_LENGTH)} vs. " \
-         "#{str2.ljust(MAX_NAME_LENGTH)} | #{str3.ljust(MAX_NAME_LENGTH)} |"
+    puts "| #{str1.ljust(TABLE_CONTENT_SIZE)} vs. " \
+         "#{str2.ljust(TABLE_CONTENT_SIZE)} " \
+         "| #{str3.ljust(TABLE_CONTENT_SIZE)} |"
   end
 
   def display_all_moves_body(attributes)
@@ -531,7 +545,7 @@ class RPSSLGame
   end
 
   def display_grand_winner
-    size = MAX_NAME_LENGTH + 24
+    size = TABLE_CONTENT_SIZE + 24
 
     puts "*#{'*' * size}*"
     puts "*#{' ' * size}*"
