@@ -1,0 +1,1 @@
+The `class` method is being called on the object that the `go_fast` method is being called on; and then being interpolated into the string that is returned by the `puts` invocation. The `self` literal refers to the object that the method will be called upon within a method definition.
