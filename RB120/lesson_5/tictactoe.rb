@@ -492,8 +492,12 @@ class TTTGame
               :player_markers
 
   def display_welcome_message
-    puts "Welcome to Tic Tac Toe!"
-    puts ""
+    puts <<-WELCOME
+Welcome to Tic Tac Toe!
+
+In this tic-tac-toe game, players will take turns placing their markers on the board. Regardless of board size, the player who has three adjacent markers forming a straight line, be it horizontally, vertically, or diagonally, wins.
+
+    WELCOME
   end
 
   def display_boards
